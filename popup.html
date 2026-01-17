@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { width: 350px; padding: 15px; font-family: "Helvetica Neue", Arial, sans-serif; }
+    h2 { color: #333; margin-top: 0; font-size: 18px; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
+    .status { padding: 10px; background: #e0f7fa; border-radius: 5px; color: #006064; font-size: 12px; margin-bottom: 15px; }
+    button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
+    button:hover { background: #0056b3; }
+    
+    /* リスト部分のスタイル */
+    #list { margin-top: 20px; max-height: 300px; overflow-y: auto; }
+    .item { background: #f8f9fa; border: 1px solid #ddd; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 12px; }
+    .item-title { font-weight: bold; color: #333; margin-bottom: 4px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .item-url { color: #666; font-size: 10px; word-break: break-all; }
+    .empty-msg { text-align: center; color: #999; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h2>AI-Prophet <span style="font-size:12px; font-weight:normal; color:#666;">Beta</span></h2>
+  
+  <div class="status">
+    System Active<br>
+    <small>自動巡回待機中...</small>
+  </div>
+
+  <button id="checkNow">現在ページを解析して保存</button>
+
+  <!-- ここにデータが溜まっていく -->
+  <div id="list">
+    <div class="empty-msg">データはまだありません</div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
