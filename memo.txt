@@ -13,6 +13,12 @@ Frontend: Next.js (管理画面・ダッシュボード)
 
 Backend: Firebase (Firestore, Functions, Auth, Hosting)
 
+Infrastructure: Google Cloud Platform (GCP)
+
+Project Policy: FirebaseプロジェクトとGoogle Cloudプロジェクトは同一IDで管理すること。
+
+API Management: Gemini API (Vertex AI API) の有効化やクォータ管理はGoogle Cloud Consoleで行うこと。
+
 Browser Extension: Chrome Extension (Manifest V3 / TypeScript / Vanilla JS)
 
 AI: Gemini 1.5 Pro / Flash API (RAGおよび構造化データ抽出用)
