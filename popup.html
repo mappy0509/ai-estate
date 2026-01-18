@@ -1,35 +1,217 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <meta charset="UTF-8">
+  <title>AI-Prophet</title>
   <style>
-    body { width: 350px; padding: 15px; font-family: "Helvetica Neue", Arial, sans-serif; }
-    h2 { color: #333; margin-top: 0; font-size: 18px; border-bottom: 2px solid #007bff; padding-bottom: 10px; }
-    .status { padding: 10px; background: #e0f7fa; border-radius: 5px; color: #006064; font-size: 12px; margin-bottom: 15px; }
-    button { width: 100%; padding: 10px; background: #007bff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; }
-    button:hover { background: #0056b3; }
+    :root {
+      --primary: #4285f4;
+      --success: #34a853;
+      --warning: #fbbc04;
+      --error: #ea4335;
+      --gray: #f1f3f4;
+    }
+    body {
+      width: 380px;
+      height: 550px;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      color: #333;
+      background: #fff;
+    }
+
+    /* ヘッダー */
+    header {
+      background: var(--primary);
+      color: white;
+      padding: 15px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: 700;
+    }
+    .patrol-btn {
+      background: white;
+      color: var(--primary);
+      border: none;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      font-size: 12px;
+      transition: opacity 0.2s;
+    }
+    .patrol-btn:hover { opacity: 0.9; }
+
+    /* リストエリア */
+    #property-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      height: 480px;
+      overflow-y: auto;
+    }
+    .property-item {
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .property-item:hover { background: #f9f9f9; }
     
-    /* リスト部分のスタイル */
-    #list { margin-top: 20px; max-height: 300px; overflow-y: auto; }
-    .item { background: #f8f9fa; border: 1px solid #ddd; padding: 10px; margin-bottom: 8px; border-radius: 4px; font-size: 12px; }
-    .item-title { font-weight: bold; color: #333; margin-bottom: 4px; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .item-url { color: #666; font-size: 10px; word-break: break-all; }
-    .empty-msg { text-align: center; color: #999; margin-top: 20px; }
+    .item-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 5px;
+    }
+    .rent {
+      font-weight: bold;
+      color: var(--primary);
+    }
+    .title {
+      font-size: 14px;
+      font-weight: bold;
+      margin-bottom: 5px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .meta {
+      font-size: 11px;
+      color: #666;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ステータスバッジ */
+    .status-badge {
+      font-size: 10px;
+      padding: 2px 6px;
+      border-radius: 10px;
+      color: white;
+    }
+    .status-analyzing { background: var(--warning); } /* 思考中 */
+    .status-ready { background: var(--success); }     /* 完了 */
+    .status-error { background: var(--error); }       /* エラー */
+
+    /* 詳細ビュー（提案文表示用） */
+    #detail-view {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: white;
+      transform: translateX(100%); /* 初期は隠す */
+      transition: transform 0.3s ease-in-out;
+      display: flex;
+      flex-direction: column;
+      z-index: 10;
+    }
+    #detail-view.open {
+      transform: translateX(0);
+    }
+    
+    .detail-header {
+      padding: 15px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      align-items: center;
+      background: #fafafa;
+    }
+    .back-btn {
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+      margin-right: 10px;
+      color: #666;
+    }
+    
+    .detail-content {
+      flex: 1;
+      padding: 15px;
+      overflow-y: auto;
+    }
+    .proposal-box {
+      width: 90%;
+      height: 350px;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-family: inherit;
+      font-size: 13px;
+      line-height: 1.6;
+      resize: none;
+      background: #fdfdfd;
+    }
+
+    .action-area {
+      padding: 15px;
+      border-top: 1px solid #eee;
+      display: flex;
+      gap: 10px;
+    }
+    .copy-btn {
+      flex: 1;
+      background: var(--success);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 4px;
+      font-weight: bold;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 5px;
+    }
+    .copy-btn:active { transform: scale(0.98); }
+    
+    /* ローディングなど */
+    .empty-state {
+      text-align: center;
+      padding: 40px;
+      color: #999;
+      font-size: 13px;
+    }
   </style>
+  
+  <script src="./libs/firebase-app-compat.js"></script>
+  <script src="./libs/firebase-firestore-compat.js"></script>
 </head>
 <body>
-  <h2>AI-Prophet <span style="font-size:12px; font-weight:normal; color:#666;">Beta</span></h2>
-  
-  <div class="status">
-    System Active<br>
-    <small>自動巡回待機中...</small>
-  </div>
 
-  <button id="checkNow">現在ページを解析して保存</button>
+  <header>
+    <h1>AI-Prophet 🤖</h1>
+    <button id="manual-patrol-btn" class="patrol-btn">解析実行</button>
+  </header>
 
-  <!-- ここにデータが溜まっていく -->
-  <div id="list">
-    <div class="empty-msg">データはまだありません</div>
+  <ul id="property-list">
+    <div class="empty-state">データを読み込み中...</div>
+  </ul>
+
+  <div id="detail-view">
+    <div class="detail-header">
+      <button id="close-detail" class="back-btn">←</button>
+      <span style="font-weight:bold;">AI提案文の確認</span>
+    </div>
+    <div class="detail-content">
+      <p style="font-size:12px; color:#666; margin-top:0;">以下の文章を編集・コピーして使用できます。</p>
+      <textarea id="proposal-text" class="proposal-box"></textarea>
+    </div>
+    <div class="action-area">
+      <button id="copy-btn" class="copy-btn">
+        📋 文章をコピー
+      </button>
+    </div>
   </div>
 
   <script src="popup.js"></script>

@@ -1,57 +1,147 @@
-// 画面が開かれたら、保存済みデータを表示する
-document.addEventListener('DOMContentLoaded', loadList);
+// popup.js - UI/UX 実装版
 
-// ボタンが押されたら解析実行
-document.getElementById('checkNow').addEventListener('click', () => {
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    // 変更点: content.js に "scrape_now" メッセージを送る
-    chrome.tabs.sendMessage(tabs[0].id, { action: "scrape_now" }, (response) => {
-      if (chrome.runtime.lastError) {
-        // content.js が読み込まれていない場合のエラーハンドリング
-        console.log("スクリプト注入中...", chrome.runtime.lastError.message);
-        // 初回ロード時などで content.js がない場合は注入してから実行
-        chrome.scripting.executeScript({
-          target: {tabId: tabs[0].id},
-          files: ['content.js']
-        }, () => {
-          // 注入後にもう一度メッセージ送信
-          setTimeout(() => {
-             chrome.tabs.sendMessage(tabs[0].id, { action: "scrape_now" });
-          }, 100);
-        });
-      } else {
-        console.log("メッセージ送信成功:", response);
+// 1. Firebase初期化 (background.jsと同じ設定)
+const firebaseConfig = {
+  apiKey: "AIzaSyA51vTIKJSVEw2X6qRAVX2iWATTCAyybEU",
+  authDomain: "ai-prophet.firebaseapp.com",
+  projectId: "ai-prophet",
+  storageBucket: "ai-prophet.firebasestorage.app",
+  messagingSenderId: "601103845030",
+  appId: "1:601103845030:web:4232cd179b6a81bb129667"
+};
+
+if (!firebase.apps.length) {
+  firebase.initializeApp(firebaseConfig);
+}
+const db = firebase.firestore();
+
+// UI要素
+const listEl = document.getElementById('property-list');
+const detailView = document.getElementById('detail-view');
+const proposalTextEl = document.getElementById('proposal-text');
+const closeBtn = document.getElementById('close-detail');
+const copyBtn = document.getElementById('copy-btn');
+const manualBtn = document.getElementById('manual-patrol-btn');
+
+// 日付フォーマット用
+const formatDate = (timestamp) => {
+  if (!timestamp) return '';
+  const d = timestamp.toDate();
+  return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
+};
+
+// 2. Firestoreからデータをリアルタイム取得
+function loadProperties() {
+  // 最新20件を取得
+  db.collection("properties")
+    .orderBy("scrapedAt", "desc")
+    .limit(20)
+    .onSnapshot((snapshot) => {
+      listEl.innerHTML = ''; // リストクリア
+
+      if (snapshot.empty) {
+        listEl.innerHTML = '<div class="empty-state">データがありません。<br>巡回を実行してください。</div>';
+        return;
       }
-      
-      // リスト更新の待機時間を少し短縮
-      setTimeout(loadList, 800);
+
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        const li = document.createElement('li');
+        li.className = 'property-item';
+        
+        // ステータスに応じた表示
+        let statusBadge = '';
+        if (data.status === 'analyzing') {
+          statusBadge = '<span class="status-badge status-analyzing">AI思考中...</span>';
+        } else if (data.status === 'ready') {
+          statusBadge = '<span class="status-badge status-ready">完了 ✨</span>';
+        } else if (data.status === 'error') {
+          statusBadge = '<span class="status-badge status-error">AIエラー</span>';
+        } else {
+          statusBadge = '<span class="status-badge status-analyzing">未処理</span>';
+        }
+
+        const rent = data.rent ? `¥${data.rent.toLocaleString()}` : '価格不明';
+
+        li.innerHTML = `
+          <div class="item-header">
+            <span class="rent">${rent}</span>
+            ${statusBadge}
+          </div>
+          <div class="title">${data.title}</div>
+          <div class="meta">
+            <span>📅 ${formatDate(data.scrapedAt)}</span>
+            <span>📍 ${data.layout || '-'}</span>
+          </div>
+        `;
+
+        // クリックで詳細を開く
+        li.addEventListener('click', () => {
+          openDetail(data);
+        });
+
+        listEl.appendChild(li);
+      });
+    }, (error) => {
+      console.error("データ取得エラー:", error);
+      listEl.innerHTML = '<div class="empty-state" style="color:red">読み込みエラー発生</div>';
     });
+}
+
+// 3. 詳細画面の制御
+function openDetail(data) {
+  // AI提案文があれば表示、なければプレースホルダー
+  if (data.ai_proposal) {
+    proposalTextEl.value = data.ai_proposal;
+  } else if (data.status === 'analyzing') {
+    proposalTextEl.value = "🤖 AIが一生懸命書いています...\nもう少しお待ちください。";
+  } else {
+    proposalTextEl.value = "提案文データがありません。";
+  }
+
+  detailView.classList.add('open');
+}
+
+// 閉じるボタン
+closeBtn.addEventListener('click', () => {
+  detailView.classList.remove('open');
+});
+
+// コピー機能
+copyBtn.addEventListener('click', async () => {
+  const text = proposalTextEl.value;
+  try {
+    await navigator.clipboard.writeText(text);
+    
+    // ボタンの見た目を一時的に変える
+    const originalText = copyBtn.innerHTML;
+    copyBtn.innerHTML = '✅ コピーしました！';
+    copyBtn.style.background = '#2d8a46';
+    
+    setTimeout(() => {
+      copyBtn.innerHTML = originalText;
+      copyBtn.style.background = '';
+    }, 2000);
+  } catch (err) {
+    console.error('コピー失敗', err);
+    alert('コピーに失敗しました');
+  }
+});
+
+// 手動解析ボタン (現在のタブで実行)
+manualBtn.addEventListener('click', () => {
+  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
+    if (tabs[0]) {
+      // content.jsへ直接メッセージ
+      chrome.tabs.sendMessage(tabs[0].id, { action: "scrape_now" }, (response) => {
+        // レスポンスがなくてもonSnapshotが更新を検知するのでOK
+        if (chrome.runtime.lastError) {
+          alert("エラー: ページをリロードしてから再試行してください。");
+        }
+      });
+    }
   });
 });
 
-// 保存されたデータをリスト表示する関数
-function loadList() {
-  chrome.storage.local.get(['history'], (result) => {
-    const list = document.getElementById('list');
-    const history = result.history || [];
-
-    if (history.length === 0) {
-      list.innerHTML = '<div class="empty-msg">データはまだありません</div>';
-      return;
-    }
-
-    // リストを生成
-    let html = '';
-    history.forEach(item => {
-      // 表示用の項目を少し調整
-      const price = item.rent ? item.rent : '(価格未取得)';
-      html += `
-        <div class="item">
-          <span class="item-title">${item.title}</span>
-          <div class="item-url">${price} - <a href="${item.url}" target="_blank">Link</a></div>
-        </div>
-      `;
-    });
-    list.innerHTML = html;
-  });
-}
+// 初期化実行
+loadProperties();
