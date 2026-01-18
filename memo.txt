@@ -1,7 +1,7 @@
-不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.4)
+不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.5)
 
 最終更新日: 2026年1月18日
-現在のステータス: Phase 3 中盤完了（マルチテナント・マルチサイト基盤実装済み）
+現在のステータス: Phase 3 中盤 - 自動巡回機能デバッグ中（一時中断）
 
 1. プロジェクトビジョン
 
@@ -15,94 +15,62 @@ Backend: Firebase (Firestore, Functions, Auth, Hosting)
 
 Infrastructure: Google Cloud Platform (GCP)
 
-Project Policy: FirebaseプロジェクトとGoogle Cloudプロジェクトは同一ID (ai-prophet) で管理中。
-
-Multi-tenancy (実装済み):
-
-データ隔離: Firestoreへの保存時に companyId フィールドを付与するロジックを background.js に実装済み（現在はデモID demo-company-001 で稼働中）。
+Multi-tenancy: 実装済み（companyId によるデータ隔離）
 
 Browser Extension: Chrome Extension (Manifest V3 / Vanilla JS)
 
-スクレイピング戦略: content.js に Strategy Pattern を適用し、ドメイン (hostname) ごとに抽出ロジックを自動で切り替えるアーキテクチャを採用。
+Firebase SDK: firebase-*-compat.js による importScripts 構成。
 
-AI: Gemini 1.5 Pro / Flash API (RAGおよび構造化データ抽出用)
+AI: Gemini 1.5 Pro / Flash API
 
 Communication: LINE Messaging API
 
-Payment: Stripe (月額サブスクリプション実装)
-
 3. 現在の実装状況 (2026/01/18時点)
 
-✅ 実装完了機能 (Prototype v1.4)
+✅ 実装完了機能
 
-Firebase連携 (The Connect):
+Firebase連携: Firestoreへのデータ保存パイプラインおよび companyId 付与ロジックの確立。
 
-Firestoreへのデータ保存パイプライン稼働中。
+マルチサイト対応: content.js でドメイン別に抽出ルールを切り替える Strategy Pattern の実装。
 
-マルチテナント対応: 保存データに companyId および siteType が自動付与される仕様へアップデート完了。
+自動巡回スケジューラー: chrome.alarms による定期的な巡回トリガー（1分間隔）の実装。
 
-リッチデータ取得機能 (The Hand - Beta):
+⚠️ 現在発生している課題（次回着手事項）
 
-マルチサイト対応: content.js 内にドメイン別ルール辞書 (SCRAPING_RULES) を実装。ITANDI BB, REINS, モックサイトを自動判別して抽出するロジックが完成。
+自動巡回時の安定性: background.js (v1.5) において、アラーム発火後のタブ生成・スクリプト注入・データ抽出のプロセスでエラーが発生中。
 
-取得項目: タイトル, URL, 住所, 賃料, 間取り。
+事象: タブは自動で開くが、解析完了・保存が成功する前にエラーが発生、またはタブが閉じるタイミングとの競合が発生している。
 
-E2Eテスト:
+🚧 次回実装予定
 
-mock_site.html を用いたデータ取得およびFirestoreへの正常保存（会社ID付き）を確認済み。
+自動巡回機能のデバッグ（最優先）: * chrome.tabs.sendMessage と content.js の応答、および executeScript の実行タイミングの完全な同期。
 
-🚧 次回実装予定 (Phase 3 後半 - The Automation)
+実サイト対応 (Phase 3 後半):
 
-バックグラウンド自動巡回:
+ITANDI BB 等の実ドメインにおけるセレクタの微調整。
 
-chrome.alarms API を使用し、一定間隔（例: 15分ごと）にトリガーを発火させる。
+バックグラウンドのステルス化:
 
-ユーザーが操作していなくても、裏側で指定URLを巡回して新着をチェックするロジックの実装。
+ユーザーの作業を邪魔しないよう、Offscreen API等への移行検討。
 
-4. 主要機能モジュール詳細
-
-4.1. LINE要件解析・自動DB反映 (The Brain)
-
-Status: 未着手
-
-概要: 顧客LINEから希望条件をJSON化し、DBへ保存。
+4. 主要機能モジュール詳細（一部抜粋）
 
 4.2. 分散型バックグラウンド・スクレイピング (The Hand)
 
-Status: 基盤完成・自動化待ち
+Status: 自動化デバッグ中
 
-概要: 営業マンのブラウザを「情報の触手」とし、ログインが必要な業者サイトからデータを自動収集する。
+概要: 営業マンのブラウザを「情報の触手」とし、特定ドメインのログイン/トップページ遷移を検知して自動収集。
 
-実装済み: サイト別DOM抽出ロジック、データ送信、DB保存。
-
-これから: chrome.offscreen または隠しタブを使用した自律的な巡回機能。
-
-4.3. 宅建業法遵守：物件死活監視・価格改定検知 (The Compliance)
-
-Status: 未着手
-
-概要: 掲載終了検知と価格改定の履歴保存。
-
-4.4. 共有物件データベース & AIマッチング (The Assets)
-
-Status: データ蓄積開始
-
-概要: companyId で区切られたDBに物件情報を集約。
-
-これから: 営業マンへの通知機能とAIによる提案文生成。
+課題: background.js からのメッセージングが Content Script 側で正しく受け取れていない、もしくは保存処理を待たずにタブが破棄されている可能性。
 
 5. エンジニアへの引き継ぎ事項 (重要)
 
-現在のコードベースについて:
+再開時のチェックポイント:
 
-ai-prophet-extension フォルダにて開発中。
+background.js (v1.5) の startPatrol() 関数内、chrome.tabs.sendMessage 付近のログを確認してください。
 
-スクレイピング: content.js の SCRAPING_RULES オブジェクトに、新しい対応サイト（SUUMO, ATBB等）のセレクタを追加するだけで機能拡張が可能です。
+content.js が注入される前にメッセージが送信されていないか、あるいは mock_site.html の読み込み完了判定が適切かを確認すること。
 
-DB構造: properties コレクションのドキュメントには必ず companyId が含まれています。クエリを投げる際は必ず where("companyId", "==", userCompanyId) を含めてください。
+エラーログ: 「Receiving end does not exist」または保存処理前のタブクローズが疑われます。
 
-次回のタスク:
-
-manifest.json に alarms 権限を追加してください。
-
-background.js に chrome.alarms.create を実装し、定期的に巡回処理 (scrape_now メッセージの送信など) を行うスケジューラーを作成してください。
+設定: manifest.json には alarms, scripting, storage 権限が含まれています。
