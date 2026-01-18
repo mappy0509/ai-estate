@@ -1,20 +1,13 @@
-// background.js - Natural Text Style (v3.5)
+// background.js - Robust Auto Patrol (v4.3)
 
 try {
-  // 1. ライブラリの読み込み
   importScripts('./libs/firebase-app-compat.js');
   importScripts('./libs/firebase-firestore-compat.js');
 
-  console.log("AI-Prophet Background Service (Natural Text) Starting...");
+  console.log("AI-Prophet Background Service (v4.3) Starting...");
 
-  // ==========================================
-  // 🔑 Gemini APIキー
   const GEMINI_API_KEY = "AIzaSyBART7by64Wb_xzBW2kedthhtPaVCCrNCo"; 
-  // ==========================================
-
   const CURRENT_COMPANY_ID = "demo-company-001";
-  const ALARM_NAME = "property_patrol";
-  const PATROL_INTERVAL_MIN = 1;
 
   const firebaseConfig = {
     apiKey: "AIzaSyA51vTIKJSVEw2X6qRAVX2iWATTCAyybEU",
@@ -30,77 +23,122 @@ try {
   }
   const db = firebase.firestore();
 
-  // アラーム設定
-  chrome.runtime.onInstalled.addListener(() => {
-    chrome.alarms.create(ALARM_NAME, { periodInMinutes: PATROL_INTERVAL_MIN });
-  });
+  // ==========================================
+  // 🔄 巡回キュー管理システム
+  // ==========================================
+  let isProcessingQueue = false;
 
-  chrome.alarms.onAlarm.addListener((alarm) => {
-    if (alarm.name === ALARM_NAME) {
-      console.log(`⏰ 定期巡回スタート: ${new Date().toLocaleTimeString()}`);
-      startPatrol();
-    }
-  });
-
-  // 巡回実行メインロジック
-  async function startPatrol() {
-    // ※テスト時は mock_site.html または targetUrl を適宜変更してください
-    const targetUrl = chrome.runtime.getURL('mock_site.html'); 
+  async function processNextUrl() {
+    const { patrolQueue } = await chrome.storage.local.get('patrolQueue');
     
-    chrome.tabs.create({ url: targetUrl, active: false }, (tab) => {
+    if (!patrolQueue || patrolQueue.length === 0) {
+      console.log("🎉 巡回完了: 全てのURLを処理しました。");
+      isProcessingQueue = false;
+      return;
+    }
+
+    isProcessingQueue = true;
+    const nextUrl = patrolQueue[0];
+    console.log(`🚀 次の巡回先へ移動中... (残り${patrolQueue.length}件):`, nextUrl);
+
+    chrome.tabs.create({ url: nextUrl, active: false }, (tab) => {
       const listener = async (tabId, changeInfo) => {
         if (tabId === tab.id && changeInfo.status === 'complete') {
           chrome.tabs.onUpdated.removeListener(listener);
-          console.log("ページ読込完了。解析リクエストを送信します...");
-
-          const sendMessageWithRetry = (retries = 5) => {
-            chrome.tabs.sendMessage(tabId, { action: "scrape_now" }, (response) => {
-              if (chrome.runtime.lastError) {
-                console.warn(`送信失敗 (残り試行: ${retries}):`, chrome.runtime.lastError.message);
-                if (retries > 0) {
-                  setTimeout(() => sendMessageWithRetry(retries - 1), 1000);
-                } else {
-                  console.error("解析タイムアウト。タブを閉じます。");
-                  chrome.tabs.remove(tabId);
+          console.log("ページロード完了。解析開始...");
+          
+          // SPA描画待ち
+          setTimeout(() => {
+              // ★修正点: コールバックでデータを直接受け取る
+              chrome.tabs.sendMessage(tabId, { action: "scrape_now" }, async (response) => {
+                
+                // エラーチェック
+                if (chrome.runtime.lastError) {
+                    console.warn("解析失敗(通信エラー):", chrome.runtime.lastError.message);
+                    finishTaskAndNext(tabId, patrolQueue);
+                    return;
                 }
-                return;
-              }
-              console.log("解析成功・応答あり。AI生成を待ちます...");
-              
-              // AI生成完了まで長めに待つ
-              setTimeout(() => {
-                chrome.tabs.remove(tabId);
-                console.log("パトロール完了。タブを閉じました。");
-              }, 15000);
-            });
-          };
-          setTimeout(() => sendMessageWithRetry(5), 1000);
+
+                if (!response) {
+                    console.warn("解析失敗(応答なし)");
+                    finishTaskAndNext(tabId, patrolQueue);
+                    return;
+                }
+
+                // 詳細ページのデータ受信処理
+                if (response.type === 'detail' && response.payload && response.payload.success) {
+                    const data = response.payload.data;
+                    console.log("✅ データ取得成功:", data.title);
+                    
+                    // DB保存 & AI生成処理
+                    await saveAndGenerateAI(data);
+                    
+                    // 処理が終わったらタブを閉じて次へ
+                    finishTaskAndNext(tabId, patrolQueue);
+
+                } else if (response.type === 'list_complete') {
+                    // 一覧完了（通常ここには来ないが念のため）
+                    finishTaskAndNext(tabId, patrolQueue);
+                } else {
+                    console.warn("解析失敗(データ不正):", response);
+                    finishTaskAndNext(tabId, patrolQueue);
+                }
+              });
+          }, 2000);
         }
       };
       chrome.tabs.onUpdated.addListener(listener);
     });
   }
 
-  // Gemini APIを叩く関数 (自然な文章版)
-  async function generateProposalWithGemini(propertyData) {
-    if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR_GEMINI_API_KEY")) {
-      return "【設定エラー】APIキーがコードに設定されていません。";
-    }
+  // データ保存 & AI生成の分離関数
+  async function saveAndGenerateAI(data) {
+    try {
+        const docRef = await db.collection("properties").add({
+            companyId: CURRENT_COMPANY_ID,
+            ...data,
+            status: "analyzing"
+        });
 
+        // Gemini呼び出し
+        const proposalText = await generateProposalWithGemini(data);
+        
+        await docRef.update({
+            ai_proposal: proposalText,
+            status: "ready"
+        });
+        console.log("✨ AI生成完了・保存済み");
+    } catch(e) {
+        console.error("保存プロセスエラー:", e);
+    }
+  }
+
+  async function finishTaskAndNext(tabId, currentQueue) {
+    try { await chrome.tabs.remove(tabId); } catch(e){}
+
+    const newQueue = currentQueue.slice(1);
+    await chrome.storage.local.set({ patrolQueue: newQueue });
+
+    setTimeout(() => {
+        processNextUrl();
+    }, 3000); 
+  }
+
+  // ==========================================
+  // AI生成ロジック
+  // ==========================================
+  async function generateProposalWithGemini(propertyData) {
+    if (!GEMINI_API_KEY) return "APIキー未設定";
     const modelName = "gemini-2.5-flash"; 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${GEMINI_API_KEY}`;
     
-    // プロンプト修正: アスタリスク禁止を追加
     const prompt = `
       あなたはプロの不動産エージェントです。以下の物件データをもとに、顧客（LINEユーザー）に送る魅力的な提案メッセージを作成してください。
-      
       【条件】
-      - ターゲット: ${propertyData.layout} という間取りから想定される層に響く内容。
-      - 文体: 親しみやすく、信頼感のある口調（絵文字あり）。
-      - 構成: 見出し、推しポイント、注意点フォロー、内見誘導。
-      - 文字数: 400文字程度。
-      - 【重要】禁止事項: アスタリスク（*）やマークダウン記法（**強調**など）は絶対に使わないでください。記号は絵文字や「！」、「・」などを使用し、人間がLINEで打つような自然なテキストにしてください。
-      
+      - ターゲット: ${propertyData.layout} から想定される層
+      - 文体: 親しみやすく、信頼感のある口調（絵文字あり）
+      - 文字数: 400文字程度
+      - 禁止事項: アスタリスク（*）やマークダウン記法は使用禁止。
       【物件データ】
       物件名: ${propertyData.title}
       家賃: ${propertyData.rent}円
@@ -114,92 +152,46 @@ try {
       const response = await fetch(apiUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
       });
-
       const data = await response.json();
-
-      if (!response.ok) {
-        console.error("Gemini API Error Detail:", data);
-        const errorCode = data.error?.code || response.status;
-        const errorMsg = data.error?.message || response.statusText;
-        return `【AIエラー】Code:${errorCode} - ${errorMsg}`;
-      }
-
-      const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text;
-      return generatedText || "【生成失敗】AIからの応答が空でした。";
-
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "生成失敗";
     } catch (error) {
-      console.error("Network Error:", error);
-      return `【通信エラー】${error.toString()}`;
+      return `通信エラー: ${error.toString()}`;
     }
   }
 
-  // データ受信・保存・AI生成
+  // ==========================================
+  // メッセージ受信 (一覧ページからのURL受信のみ担当)
+  // ==========================================
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "scraped_data") {
-      const data = request.data;
-      console.log("【データ受信】保存＆AI生成プロセス開始:", data.title);
+    
+    // 一覧ページからURLリストが送られてきた時
+    if (request.action === "crawling_urls") {
+      const newUrls = request.urls;
+      
+      chrome.storage.local.get(['patrolQueue'], (result) => {
+        const currentQueue = result.patrolQueue || [];
+        const queueSet = new Set(currentQueue);
+        const uniqueUrls = newUrls.filter(url => !queueSet.has(url));
 
-      const processData = async () => {
-        try {
-          const docRef = await db.collection("properties").add({
-            companyId: CURRENT_COMPANY_ID,
-            title: data.title,
-            url: data.url,
-            address: data.address || "不明",
-            rent: data.rent || 0,
-            layout: data.layout || "不明",
-            management_fee: data.management_fee || 0,
-            deposit: data.deposit || 0,
-            key_money: data.key_money || 0,
-            facilities: data.facilities || "",
-            cost_details: data.cost_details || "",
-            siteType: data.siteType || "unknown",
-            scrapedAt: firebase.firestore.FieldValue.serverTimestamp(),
-            isAutoPatrol: true,
-            status: "analyzing"
-          });
+        if (uniqueUrls.length > 0) {
+          console.log(`📦 新規追加: ${uniqueUrls.length}件`);
+          const updatedQueue = [...currentQueue, ...uniqueUrls];
           
-          console.log("【保存完了】ID:", docRef.id);
-
-          console.log("🤖 Gemini AI思考中...");
-          const proposalText = await generateProposalWithGemini(data);
-          
-          if (proposalText.startsWith("【")) {
-              console.error("AI生成プロセス異常:", proposalText);
-          } else {
-              console.log("✨ 提案文生成完了");
-          }
-
-          await docRef.update({
-            ai_proposal: proposalText,
-            status: proposalText.startsWith("【") ? "error" : "ready"
+          chrome.storage.local.set({ patrolQueue: updatedQueue }, () => {
+            if (!isProcessingQueue) {
+                processNextUrl(); // 処理開始
+            }
           });
-
-          chrome.storage.local.get(['history'], (result) => {
-            const history = result.history || [];
-            history.unshift({ 
-              title: `[AI処理済] ${data.title}`,
-              rent: data.rent ? `¥${data.rent.toLocaleString()}` : '', 
-              id: docRef.id 
-            });
-            chrome.storage.local.set({ history: history.slice(0, 20) });
-          });
-
-        } catch (e) {
-          console.error("【失敗】処理エラー:", e);
         }
-      };
-
-      processData();
-      sendResponse({ status: "processing" });
-      return true;
+      });
+      // 一覧ページへの応答
+      sendResponse({ status: "received" });
     }
+    return true;
   });
 
 } catch (e) {
-  console.error("Critical Error in Background:", e);
+  console.error("Critical Error:", e);
 }
