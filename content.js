@@ -1,18 +1,45 @@
-// content.js - ページに注入されてデータを吸い上げる
-console.log("AI-Prophet Content Script Loaded.");
+// content.js - DOM解析ロジック強化版 (自動応答対応)
+console.log("AI-Prophet Content Script (v3) Loaded.");
 
-// ページが読み込まれたら即座に実行（本来は特定のドメインだけで動かす）
-const pageData = {
-  title: document.title,
-  url: window.location.href,
-  htmlLength: document.body.innerHTML.length,
-  // 将来的にはここで「価格」「住所」などをDOMから引っこ抜く
-};
+// ページ内の情報を収集する関数
+function scrapePageData() {
+  // 1. 基本情報の取得
+  const title = document.querySelector('.property-title')?.innerText || document.title;
+  const address = document.querySelector('.address')?.innerText || "";
+  const rent = document.querySelector('.rent')?.innerText || "0";
+  const layout = document.querySelector('.layout')?.innerText || "";
+  
+  // 2. データの整形（カンマ削除や数値変換など）
+  const cleanRent = parseInt(rent.replace(/,/g, ''), 10);
 
-// バックグラウンド（background.js）にデータを投げる
-chrome.runtime.sendMessage({
-  action: "scraped_data",
-  data: pageData
-}, (response) => {
-  console.log("バックグラウンドからの応答:", response);
+  // 3. データオブジェクトの作成
+  const propertyData = {
+    title: title,
+    url: window.location.href,
+    address: address,
+    rent: cleanRent,
+    layout: layout,
+    scrapedAt: new Date().toISOString()
+  };
+
+  console.log("【解析完了】取得データ:", propertyData);
+  return propertyData;
+}
+
+// 外部（background.jsやpopup.js）からの命令を待機
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "scrape_now") {
+    const data = scrapePageData();
+    sendResponse({ status: "success", data: data });
+    
+    // 取得したデータをそのままbackgroundへ転送（保存用）
+    chrome.runtime.sendMessage({
+      action: "scraped_data",
+      data: data
+    });
+  }
 });
+
+// (開発用) ページを開いた瞬間に自動実行したい場合はコメントアウトを外す
+// const autoData = scrapePageData();
+// chrome.runtime.sendMessage({ action: "scraped_data", data: autoData });

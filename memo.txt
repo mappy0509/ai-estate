@@ -1,7 +1,7 @@
-不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.2)
+不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.3)
 
 最終更新日: 2026年1月18日
-現在のステータス: Phase 2 完了（Firebase連携・データ送信成功）
+現在のステータス: Phase 3 初期完了（詳細データ取得ロジック実装・テスト完了）
 
 1. プロジェクトビジョン
 
@@ -19,9 +19,15 @@ Project Policy: FirebaseプロジェクトとGoogle Cloudプロジェクトは�
 
 API Management: Gemini API (Vertex AI API) の有効化やクォータ管理はGoogle Cloud Consoleで行うこと。
 
+Multi-tenancy Strategy (重要):
+
+データ隔離: すべてのドキュメント（properties, customers, users）に companyId フィールドを必須とし、企業単位でのデータ分離を徹底すること。
+
+セキュリティルール: Firestore Security Rules により、ログインユーザーの companyId と一致するドキュメントのみ読み書き可能にする厳格なアクセス制御を実装すること。
+
 Browser Extension: Chrome Extension (Manifest V3 / Vanilla JS)
 
-重要: 開発環境を簡素化するため、webpack等は使用せず firebase-compat ライブラリを importScripts で読み込む構成を採用中。
+開発方針: libs フォルダに firebase-*-compat.js を配置し、Service Worker (background.js) で importScripts を使用する構成を維持。
 
 AI: Gemini 1.5 Pro / Flash API (RAGおよび構造化データ抽出用)
 
@@ -31,21 +37,27 @@ Payment: Stripe (月額サブスクリプション実装)
 
 3. 現在の実装状況 (2026/01/18時点)
 
-✅ 実装完了機能 (Prototype v1)
-
-Chrome拡張機能基本動作: Manifest V3準拠、ポップアップUI、Content Scriptによるデータ取得。
+✅ 実装完了機能 (Prototype v1.3)
 
 Firebase連携 (The Connect):
 
-ai-prophet プロジェクトとの接続完了。
+ai-prophet プロジェクトとの接続およびFirestoreへのデータ保存（properties コレクション）が正常に稼働中。
 
-background.js から Firestore へのデータ書き込み（properties コレクション）に成功。
+リッチデータ取得機能 (The Hand - Beta):
 
-構成: libs/firebase-app-compat.js および libs/firebase-firestore-compat.js を使用したService Worker構成。
+content.js を関数化し、外部メッセージ (scrape_now) をトリガーに動作するエージェント型へ改修完了。
 
-🚧 次回実装予定 (Phase 3)
+取得項目: タイトル、URLに加え、賃料 (rent)、住所 (address)、間取り (layout) のDOM抽出ロジックを実装済み。
 
-実サイト対応 (The Hand - Beta): ITANDI BB や REINS などの実際の業者間サイトのDOM構造に対応したスクレイピングロジックの実装。
+モックサイト (mock_site.html) を用いたE2Eテストにて、データの取得・整形・保存・リスト表示の一連の流れを確認済み。
+
+UI連携強化:
+
+popup.js から content.js へのメッセージパッシング (sendMessage) を実装。スクリプト未注入時の自動注入 (executeScript) ロジックによるエラーハンドリングを追加。
+
+🚧 次回実装予定 (Phase 3 後半)
+
+実サイト対応 (The Hand - Production): ITANDI BB や REINS などの実際の業者間サイトのDOM構造に対応するため、サイトごとに抽出セレクタを切り替えるロジック（Strategy Pattern）の実装。
 
 バックグラウンド自動巡回: ユーザーが操作していない裏側（Offscreen API等）で、検索条件に基づいたURLを巡回する機能の実装。
 
@@ -97,9 +109,9 @@ AIパース: HTML構造に依存せず、Geminiのマルチモーダル機能等
 
 要件:
 
-営業マンAが取得した物件を社内共通DBに保存。
+営業マンAが取得した物件を companyId を付与して 社内共通DBに保存。他社のデータとは完全に隔離すること。
 
-営業マンBの担当客に条件が合致すれば、即座にBの管理画面に「提案候補」として表示。
+営業マンB（同一 companyId）の担当客に条件が合致すれば、即座にBの管理画面に「提案候補」として表示。
 
 目利きプロンプト: 山本氏（宅建士）の知見を反映し、物件のメリット・デメリットをAIが整理して提案文を生成。
 
@@ -111,8 +123,10 @@ ai-prophet-extension フォルダにて開発中。
 
 Firebase SDK: npmなどは使用せず、libs フォルダに firebase-*-compat.js を配置し、background.js 内で importScripts を使って読み込んでいます。この構成を変えずに機能拡張を行ってください。
 
-Firestoreセキュリティ: 現在はテストモード（全許可）です。本番移行時には適切なセキュリティルールの設定が必要です。
+Firestoreセキュリティ: 現在はテストモード（全許可）です。本番移行時には、request.auth.token.companyId == resource.data.companyId といった適切なセキュリティルールの設定が必要です。
 
 次回のタスク:
 
-content.js を拡張し、特定の不動産サイト（まずはITANDI BBを想定）のHTML構造から、物件名・賃料・住所などを正しく抽出するセレクタまたはAIパースロジックを実装してください。
+現在の scrapePageData() 関数内のセレクタはモック用です。window.location.hostname に応じて実サイト（ITANDI BB等）用のセレクタに切り替えるロジックを追加してください。
+
+background.js にて chrome.alarms 等を使用し、一定間隔で巡回トリガーを発火させるロジックの検討を始めてください。
