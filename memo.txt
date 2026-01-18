@@ -1,7 +1,7 @@
-不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.1)
+不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.2)
 
-最終更新日: 2026年1月17日
-現在のステータス: Phase 1 進行中（Chrome拡張プロトタイプ動作確認済み）
+最終更新日: 2026年1月18日
+現在のステータス: Phase 2 完了（Firebase連携・データ送信成功）
 
 1. プロジェクトビジョン
 
@@ -15,11 +15,13 @@ Backend: Firebase (Firestore, Functions, Auth, Hosting)
 
 Infrastructure: Google Cloud Platform (GCP)
 
-Project Policy: FirebaseプロジェクトとGoogle Cloudプロジェクトは同一IDで管理すること。
+Project Policy: FirebaseプロジェクトとGoogle Cloudプロジェクトは同一ID (ai-prophet) で管理中。
 
 API Management: Gemini API (Vertex AI API) の有効化やクォータ管理はGoogle Cloud Consoleで行うこと。
 
-Browser Extension: Chrome Extension (Manifest V3 / TypeScript / Vanilla JS)
+Browser Extension: Chrome Extension (Manifest V3 / Vanilla JS)
+
+重要: 開発環境を簡素化するため、webpack等は使用せず firebase-compat ライブラリを importScripts で読み込む構成を採用中。
 
 AI: Gemini 1.5 Pro / Flash API (RAGおよび構造化データ抽出用)
 
@@ -27,21 +29,25 @@ Communication: LINE Messaging API
 
 Payment: Stripe (月額サブスクリプション実装)
 
-3. 現在の実装状況 (2026/01/17時点)
+3. 現在の実装状況 (2026/01/18時点)
 
-実装済み機能 (Prototype)
+✅ 実装完了機能 (Prototype v1)
 
-Chrome拡張機能の骨子作成: Manifest V3準拠の基本構成 (manifest.json, background.js, content.js, popup.js, popup.html)。
+Chrome拡張機能基本動作: Manifest V3準拠、ポップアップUI、Content Scriptによるデータ取得。
 
-データ収集機能 (The Hand - Alpha): 閲覧中のページタイトル、URL、HTML情報の取得に成功。
+Firebase連携 (The Connect):
 
-ローカル保存機能: chrome.storage.local を使用したデータ永続化と、ポップアップ画面でのリスト表示機能の実装完了。
+ai-prophet プロジェクトとの接続完了。
 
-次回実装予定
+background.js から Firestore へのデータ書き込み（properties コレクション）に成功。
 
-Firebase連携: 取得したデータをローカルではなくFirestoreへ送信する機能。
+構成: libs/firebase-app-compat.js および libs/firebase-firestore-compat.js を使用したService Worker構成。
 
-バックグラウンド自動巡回: ユーザー操作なしで特定のURLを裏側で巡回するロジックの実装。
+🚧 次回実装予定 (Phase 3)
+
+実サイト対応 (The Hand - Beta): ITANDI BB や REINS などの実際の業者間サイトのDOM構造に対応したスクレイピングロジックの実装。
+
+バックグラウンド自動巡回: ユーザーが操作していない裏側（Offscreen API等）で、検索条件に基づいたURLを巡回する機能の実装。
 
 4. 主要機能モジュール詳細
 
@@ -97,18 +103,16 @@ AIパース: HTML構造に依存せず、Geminiのマルチモーダル機能等
 
 目利きプロンプト: 山本氏（宅建士）の知見を反映し、物件のメリット・デメリットをAIが整理して提案文を生成。
 
-5. 開発マイルストーン (修正版)
+5. エンジニアへの引き継ぎ事項 (重要)
 
-Phase 1 (現在): Chrome Extension基本機能の実装。データ取得・ローカル保存まで完了。
+現在のコードベースについて:
 
-Phase 2 (次回): Firebase連携とバックグラウンド巡回の実装。 特定1サイト（ITANDI BB等）からの全自動データ抽出。
+ai-prophet-extension フォルダにて開発中。
 
-Phase 3: LINE Messaging API連携。顧客条件の自動JSON化モジュールの作成。
+Firebase SDK: npmなどは使用せず、libs フォルダに firebase-*-compat.js を配置し、background.js 内で importScripts を使って読み込んでいます。この構成を変えずに機能拡張を行ってください。
 
-Phase 4: Firebaseでのマッチングロジックおよび物件死活監視の実装。
+Firestoreセキュリティ: 現在はテストモード（全許可）です。本番移行時には適切なセキュリティルールの設定が必要です。
 
-Phase 5: ダッシュボードUI構築、Stripe決済連携、LP公開。
+次回のタスク:
 
-6. エンジニアへのメッセージ
-
-「プロトタイプフォルダ ai-prophet-extension が存在します。基本動作（データ収集・表示）は確認済みです。次回はこのコードをベースに、データの保存先をChrome Local StorageからFirebase Firestoreへ変更し、実際の業者サイト（ITANDI等）のDOM構造に合わせたデータ抽出ロジックの実装へ進んでください。」
+content.js を拡張し、特定の不動産サイト（まずはITANDI BBを想定）のHTML構造から、物件名・賃料・住所などを正しく抽出するセレクタまたはAIパースロジックを実装してください。
