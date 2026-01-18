@@ -1,45 +1,77 @@
-// content.js - DOM解析ロジック強化版 (自動応答対応)
-console.log("AI-Prophet Content Script (v3) Loaded.");
+// content.js - マルチサイト対応版
+console.log("AI-Prophet Content Script (Multi-Site) Loaded.");
 
-// ページ内の情報を収集する関数
+// サイトごとの抽出ルール定義 (Strategy Pattern)
+const SCRAPING_RULES = {
+  // ITANDI BB (仮のセレクタ例)
+  'www.itandi-bb.jp': {
+    siteType: 'itandi',
+    title: '.bukken-name',
+    address: '.bukken-address',
+    rent: '.bukken-rent',
+    layout: '.bukken-layout'
+  },
+  // REINS (仮のセレクタ例)
+  'system.reins.jp': {
+    siteType: 'reins',
+    title: '#lblBukkenName',
+    address: '#lblShozaichi',
+    rent: '#lblKakaku',
+    layout: '#lblMadori'
+  },
+  // 開発用モックサイト (ローカルファイルや特定のテストドメイン)
+  'default': {
+    siteType: 'mock',
+    title: '.property-title', // mock_site.htmlのクラス
+    address: '.address',
+    rent: '.rent',
+    layout: '.layout'
+  }
+};
+
+// 現在のドメインに合ったルールを取得
+function getRule() {
+  const hostname = window.location.hostname;
+  // ドメインが定義されていればそれを、なければdefault(モック用)を使う
+  return SCRAPING_RULES[hostname] || SCRAPING_RULES['default'];
+}
+
 function scrapePageData() {
-  // 1. 基本情報の取得
-  const title = document.querySelector('.property-title')?.innerText || document.title;
-  const address = document.querySelector('.address')?.innerText || "";
-  const rent = document.querySelector('.rent')?.innerText || "0";
-  const layout = document.querySelector('.layout')?.innerText || "";
-  
-  // 2. データの整形（カンマ削除や数値変換など）
-  const cleanRent = parseInt(rent.replace(/,/g, ''), 10);
+  const rule = getRule();
+  console.log(`【解析開始】適用ルール: ${rule.siteType} (Host: ${window.location.hostname})`);
 
-  // 3. データオブジェクトの作成
+  // ルールに基づいてDOMを取得
+  const title = document.querySelector(rule.title)?.innerText || document.title;
+  const address = document.querySelector(rule.address)?.innerText || "";
+  const rentStr = document.querySelector(rule.rent)?.innerText || "0";
+  const layout = document.querySelector(rule.layout)?.innerText || "";
+  
+  // データの整形
+  const cleanRent = parseInt(rentStr.replace(/,/g, '').replace('万円', '0000'), 10);
+
   const propertyData = {
     title: title,
     url: window.location.href,
     address: address,
-    rent: cleanRent,
+    rent: isNaN(cleanRent) ? 0 : cleanRent,
     layout: layout,
+    siteType: rule.siteType, // 分析用に保存
     scrapedAt: new Date().toISOString()
   };
 
-  console.log("【解析完了】取得データ:", propertyData);
+  console.log("【取得データ】", propertyData);
   return propertyData;
 }
 
-// 外部（background.jsやpopup.js）からの命令を待機
+// メッセージ待機
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "scrape_now") {
     const data = scrapePageData();
     sendResponse({ status: "success", data: data });
     
-    // 取得したデータをそのままbackgroundへ転送（保存用）
     chrome.runtime.sendMessage({
       action: "scraped_data",
       data: data
     });
   }
 });
-
-// (開発用) ページを開いた瞬間に自動実行したい場合はコメントアウトを外す
-// const autoData = scrapePageData();
-// chrome.runtime.sendMessage({ action: "scraped_data", data: autoData });

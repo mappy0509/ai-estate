@@ -1,7 +1,7 @@
-不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.3)
+不動産営業自動化SaaS『AI-Prophet』詳細開発指示書 (v1.4)
 
 最終更新日: 2026年1月18日
-現在のステータス: Phase 3 初期完了（詳細データ取得ロジック実装・テスト完了）
+現在のステータス: Phase 3 中盤完了（マルチテナント・マルチサイト基盤実装済み）
 
 1. プロジェクトビジョン
 
@@ -17,17 +17,13 @@ Infrastructure: Google Cloud Platform (GCP)
 
 Project Policy: FirebaseプロジェクトとGoogle Cloudプロジェクトは同一ID (ai-prophet) で管理中。
 
-API Management: Gemini API (Vertex AI API) の有効化やクォータ管理はGoogle Cloud Consoleで行うこと。
+Multi-tenancy (実装済み):
 
-Multi-tenancy Strategy (重要):
-
-データ隔離: すべてのドキュメント（properties, customers, users）に companyId フィールドを必須とし、企業単位でのデータ分離を徹底すること。
-
-セキュリティルール: Firestore Security Rules により、ログインユーザーの companyId と一致するドキュメントのみ読み書き可能にする厳格なアクセス制御を実装すること。
+データ隔離: Firestoreへの保存時に companyId フィールドを付与するロジックを background.js に実装済み（現在はデモID demo-company-001 で稼働中）。
 
 Browser Extension: Chrome Extension (Manifest V3 / Vanilla JS)
 
-開発方針: libs フォルダに firebase-*-compat.js を配置し、Service Worker (background.js) で importScripts を使用する構成を維持。
+スクレイピング戦略: content.js に Strategy Pattern を適用し、ドメイン (hostname) ごとに抽出ロジックを自動で切り替えるアーキテクチャを採用。
 
 AI: Gemini 1.5 Pro / Flash API (RAGおよび構造化データ抽出用)
 
@@ -37,83 +33,63 @@ Payment: Stripe (月額サブスクリプション実装)
 
 3. 現在の実装状況 (2026/01/18時点)
 
-✅ 実装完了機能 (Prototype v1.3)
+✅ 実装完了機能 (Prototype v1.4)
 
 Firebase連携 (The Connect):
 
-ai-prophet プロジェクトとの接続およびFirestoreへのデータ保存（properties コレクション）が正常に稼働中。
+Firestoreへのデータ保存パイプライン稼働中。
+
+マルチテナント対応: 保存データに companyId および siteType が自動付与される仕様へアップデート完了。
 
 リッチデータ取得機能 (The Hand - Beta):
 
-content.js を関数化し、外部メッセージ (scrape_now) をトリガーに動作するエージェント型へ改修完了。
+マルチサイト対応: content.js 内にドメイン別ルール辞書 (SCRAPING_RULES) を実装。ITANDI BB, REINS, モックサイトを自動判別して抽出するロジックが完成。
 
-取得項目: タイトル、URLに加え、賃料 (rent)、住所 (address)、間取り (layout) のDOM抽出ロジックを実装済み。
+取得項目: タイトル, URL, 住所, 賃料, 間取り。
 
-モックサイト (mock_site.html) を用いたE2Eテストにて、データの取得・整形・保存・リスト表示の一連の流れを確認済み。
+E2Eテスト:
 
-UI連携強化:
+mock_site.html を用いたデータ取得およびFirestoreへの正常保存（会社ID付き）を確認済み。
 
-popup.js から content.js へのメッセージパッシング (sendMessage) を実装。スクリプト未注入時の自動注入 (executeScript) ロジックによるエラーハンドリングを追加。
+🚧 次回実装予定 (Phase 3 後半 - The Automation)
 
-🚧 次回実装予定 (Phase 3 後半)
+バックグラウンド自動巡回:
 
-実サイト対応 (The Hand - Production): ITANDI BB や REINS などの実際の業者間サイトのDOM構造に対応するため、サイトごとに抽出セレクタを切り替えるロジック（Strategy Pattern）の実装。
+chrome.alarms API を使用し、一定間隔（例: 15分ごと）にトリガーを発火させる。
 
-バックグラウンド自動巡回: ユーザーが操作していない裏側（Offscreen API等）で、検索条件に基づいたURLを巡回する機能の実装。
+ユーザーが操作していなくても、裏側で指定URLを巡回して新着をチェックするロジックの実装。
 
 4. 主要機能モジュール詳細
 
 4.1. LINE要件解析・自動DB反映 (The Brain)
 
-概要: 顧客がLINEで送る曖昧な希望条件を解析し、検索条件として構造化する。
+Status: 未着手
 
-要件:
-
-LINE Messaging APIで受信したトークをGemini APIに投下。
-
-エリア、価格、間取り、こだわり条件（学区、駐車場台数、ペット可等）をJSON形式で抽出。
-
-既存条件の更新: 「やっぱり〇〇が良い」といった追加・修正発言を判別し、Firebaseの顧客条件を自動更新する。
+概要: 顧客LINEから希望条件をJSON化し、DBへ保存。
 
 4.2. 分散型バックグラウンド・スクレイピング (The Hand)
 
+Status: 基盤完成・自動化待ち
+
 概要: 営業マンのブラウザを「情報の触手」とし、ログインが必要な業者サイトからデータを自動収集する。
 
-動作トリガー: REINS、ITANDI BB、ATBB等、特定ドメインのログイン/トップページ遷移を検知。
+実装済み: サイト別DOM抽出ロジック、データ送信、DB保存。
 
-全自動検索ロジック:
-
-Firebaseから全顧客の検索条件を読み込む。
-
-手入力不要: 検索条件をURLパラメータ（GETリクエスト）に自動変換し、非表示のオフスクリーン（Offscreen API）で検索結果ページを巡回。
-
-AIパース: HTML構造に依存せず、Geminiのマルチモーダル機能等を用いて「物件詳細」から必要情報を抽出。
+これから: chrome.offscreen または隠しタブを使用した自律的な巡回機能。
 
 4.3. 宅建業法遵守：物件死活監視・価格改定検知 (The Compliance)
 
-概要: 「おとり物件」を排除し、価格改定という営業チャンスを逃さない。
+Status: 未着手
 
-要件:
-
-掲載終了検知: DB内の「公開中」物件URLを定期的にバックグラウンド巡回。
-
-「掲載終了」「成約済み」「404」等の文言をAIが検知した瞬間、即座にDBのステータスを更新し、LINE提案対象から除外。
-
-価格改定検知: 同一物件の価格・条件に変更があった場合、変更履歴を記録。
-
-通知トリガー: 価格が下がった場合、その物件を検討中の顧客へ「プライスダウン通知」をLINEで自動下書き（または送信）。
+概要: 掲載終了検知と価格改定の履歴保存。
 
 4.4. 共有物件データベース & AIマッチング (The Assets)
 
-概要: 社内の誰かが一度取得した物件を資産化し、全営業マンの顧客へマッチング。
+Status: データ蓄積開始
 
-要件:
+概要: companyId で区切られたDBに物件情報を集約。
 
-営業マンAが取得した物件を companyId を付与して 社内共通DBに保存。他社のデータとは完全に隔離すること。
-
-営業マンB（同一 companyId）の担当客に条件が合致すれば、即座にBの管理画面に「提案候補」として表示。
-
-目利きプロンプト: 山本氏（宅建士）の知見を反映し、物件のメリット・デメリットをAIが整理して提案文を生成。
+これから: 営業マンへの通知機能とAIによる提案文生成。
 
 5. エンジニアへの引き継ぎ事項 (重要)
 
@@ -121,12 +97,12 @@ AIパース: HTML構造に依存せず、Geminiのマルチモーダル機能等
 
 ai-prophet-extension フォルダにて開発中。
 
-Firebase SDK: npmなどは使用せず、libs フォルダに firebase-*-compat.js を配置し、background.js 内で importScripts を使って読み込んでいます。この構成を変えずに機能拡張を行ってください。
+スクレイピング: content.js の SCRAPING_RULES オブジェクトに、新しい対応サイト（SUUMO, ATBB等）のセレクタを追加するだけで機能拡張が可能です。
 
-Firestoreセキュリティ: 現在はテストモード（全許可）です。本番移行時には、request.auth.token.companyId == resource.data.companyId といった適切なセキュリティルールの設定が必要です。
+DB構造: properties コレクションのドキュメントには必ず companyId が含まれています。クエリを投げる際は必ず where("companyId", "==", userCompanyId) を含めてください。
 
 次回のタスク:
 
-現在の scrapePageData() 関数内のセレクタはモック用です。window.location.hostname に応じて実サイト（ITANDI BB等）用のセレクタに切り替えるロジックを追加してください。
+manifest.json に alarms 権限を追加してください。
 
-background.js にて chrome.alarms 等を使用し、一定間隔で巡回トリガーを発火させるロジックの検討を始めてください。
+background.js に chrome.alarms.create を実装し、定期的に巡回処理 (scrape_now メッセージの送信など) を行うスケジューラーを作成してください。

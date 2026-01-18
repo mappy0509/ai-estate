@@ -1,8 +1,11 @@
-// background.js - データ項目の追加対応
+// background.js - マルチテナント対応版
 importScripts('./libs/firebase-app-compat.js');
 importScripts('./libs/firebase-firestore-compat.js');
 
 console.log("AI-Prophet Background Service (Compat Mode) Starting...");
+
+// 開発用の仮の会社ID（本番ではログインユーザー情報から取得します）
+const CURRENT_COMPANY_ID = "demo-company-001";
 
 const firebaseConfig = {
   apiKey: "AIzaSyA51vTIKJSVEw2X6qRAVX2iWATTCAyybEU",
@@ -27,7 +30,7 @@ try {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "scraped_data") {
     const data = request.data;
-    console.log("【データ受信】詳細データ:", data);
+    console.log("【データ受信】保存処理開始:", data.title);
 
     if (!db) {
       sendResponse({ status: "error", msg: "DB未接続" });
@@ -36,23 +39,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const saveToFirebase = async () => {
       try {
-        // 保存する項目を増やしました
+        // マルチテナント対応: companyId を付与して保存
         const docRef = await db.collection("properties").add({
+          companyId: CURRENT_COMPANY_ID, // 👈 ここが重要！
           title: data.title,
           url: data.url,
           address: data.address || "不明",
           rent: data.rent || 0,
           layout: data.layout || "不明",
+          siteType: data.siteType || "unknown", // どこのサイトから来たかも記録
           scrapedAt: firebase.firestore.FieldValue.serverTimestamp(),
           status: "new"
         });
         
         console.log("【送信成功】Document ID: ", docRef.id);
         
-        // ローカル履歴も更新
         chrome.storage.local.get(['history'], (result) => {
           const history = result.history || [];
-          // 表示用に少しリッチな情報を保存
           history.unshift({ 
             title: data.title, 
             rent: data.rent ? `¥${data.rent.toLocaleString()}` : '', 
