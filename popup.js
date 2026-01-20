@@ -1,176 +1,108 @@
-// popup.js - Cost Saving Mode (v5.0)
+// ==================================================
+// AI-Prophet Popup Controller
+// Version: 5.1 (Japanese & Robust Logic)
+// ==================================================
 
-// 1. Firebase初期化
-const firebaseConfig = {
-  apiKey: "AIzaSyA51vTIKJSVEw2X6qRAVX2iWATTCAyybEU",
-  authDomain: "ai-prophet.firebaseapp.com",
-  projectId: "ai-prophet",
-  storageBucket: "ai-prophet.firebasestorage.app",
-  messagingSenderId: "601103845030",
-  appId: "1:601103845030:web:4232cd179b6a81bb129667"
-};
+document.addEventListener('DOMContentLoaded', () => {
+  const ui = {
+    statusText: document.getElementById('status-text'),
+    statusDot: document.getElementById('status-dot'),
+    queueCount: document.getElementById('queue-count'),
+    btnStart: document.getElementById('btn-start'),
+    btnClear: document.getElementById('btn-clear')
+  };
 
-if (!firebase.apps.length) {
-  firebase.initializeApp(firebaseConfig);
-}
-const db = firebase.firestore();
+  // --- 1. 状態監視 (State Monitoring) ---
+  
+  function updateUI() {
+    chrome.storage.local.get(['patrolQueue', 'isPatrolling'], (result) => {
+      const queue = result.patrolQueue || [];
+      const count = queue.length;
+      const isRunning = result.isPatrolling || false; // Backgroundの状態も見るように変更
+      
+      ui.queueCount.textContent = count;
 
-// UI要素
-const listEl = document.getElementById('property-list');
-const detailView = document.getElementById('detail-view');
-const proposalTextEl = document.getElementById('proposal-text');
-const closeBtn = document.getElementById('close-detail');
-const actionBtn = document.getElementById('action-btn'); // ボタンを汎用化
-const manualBtn = document.getElementById('manual-patrol-btn');
-
-// 【エラー修正】日付フォーマット用（安全版）
-const formatDate = (timestamp) => {
-  if (!timestamp || typeof timestamp.toDate !== 'function') {
-    return '日時不明'; // データがない、または変換できない場合は安全な文字列を返す
+      if (count > 0 && isRunning) {
+        setRunningState();
+      } else if (count > 0 && !isRunning) {
+        setPausedState();
+      } else {
+        setIdleState();
+      }
+    });
   }
-  try {
-    const d = timestamp.toDate();
-    return `${d.getMonth() + 1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2, '0')}`;
-  } catch (e) {
-    return '日時不明';
+
+  function setRunningState() {
+    ui.statusText.innerHTML = '<span class="dot bg-green"></span>自動巡回中...';
+    ui.statusText.className = 'status-value status-active';
+    ui.btnStart.disabled = true;
+    ui.btnStart.textContent = '巡回中...';
+    ui.btnStart.style.opacity = '0.6';
   }
-};
 
-// 2. Firestoreからデータをリアルタイム取得
-function loadProperties() {
-  db.collection("properties")
-    .orderBy("scrapedAt", "desc")
-    .limit(20)
-    .onSnapshot((snapshot) => {
-      listEl.innerHTML = ''; 
+  function setPausedState() {
+    ui.statusText.innerHTML = '<span class="dot bg-warning" style="background-color: #ffc107;"></span>待機中';
+    ui.statusText.className = 'status-value status-warning';
+    ui.btnStart.disabled = false;
+    ui.btnStart.textContent = '▶ 巡回再開';
+    ui.btnStart.style.opacity = '1';
+  }
 
-      if (snapshot.empty) {
-        listEl.innerHTML = '<div class="empty-state">データがありません。<br>巡回を実行してください。</div>';
+  function setIdleState() {
+    ui.statusText.innerHTML = '<span class="dot bg-gray"></span>待機中 (キュー空)';
+    ui.statusText.className = 'status-value status-idle';
+    ui.btnStart.disabled = false;
+    ui.btnStart.textContent = '▶ 巡回開始';
+    ui.btnStart.style.opacity = '1';
+  }
+
+  // リアルタイム更新（Storageの変更を検知）
+  chrome.storage.onChanged.addListener((changes, namespace) => {
+    if (namespace === 'local') {
+      updateUI();
+    }
+  });
+
+  // 初回実行
+  updateUI();
+
+  // --- 2. ユーザーアクション (Controls) ---
+
+  // パトロール再開（手動トリガー）
+  ui.btnStart.addEventListener('click', () => {
+    // まずキューの確認
+    chrome.storage.local.get(['patrolQueue'], (result) => {
+      const queue = result.patrolQueue || [];
+      
+      if (queue.length === 0) {
+        alert("巡回するURLがありません。\nまずは物件一覧ページを開いて、リストを読み込ませてください。");
         return;
       }
 
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        const docId = doc.id; // IDも取得しておく
-        
-        const li = document.createElement('li');
-        li.className = 'property-item';
-        
-        // ステータス表示ロジック変更
-        let statusBadge = '';
-        if (data.status === 'analyzing') {
-          statusBadge = '<span class="status-badge status-analyzing">AI作成中...</span>';
-        } else if (data.status === 'ready') {
-          statusBadge = '<span class="status-badge status-ready">AI完了 ✨</span>';
-        } else if (data.status === 'fetched') {
-          statusBadge = '<span class="status-badge" style="background:#999">未作成</span>';
-        } else if (data.status === 'error') {
-          statusBadge = '<span class="status-badge status-error">エラー</span>';
+      // メッセージ送信
+      chrome.runtime.sendMessage({ action: "start_patrol" }, (response) => {
+        if (chrome.runtime.lastError) {
+            console.error("Communication Error:", chrome.runtime.lastError.message);
+            alert("エラー: バックグラウンドスクリプトが応答しません。拡張機能を再読み込みしてください。");
+        } else {
+            console.log("Start signal sent:", response);
+            // 強制的にUIを「実行中」っぽく見せる（レスポンス待ちのタイムラグ対策）
+            setRunningState();
         }
-
-        const rent = data.rent ? `¥${data.rent.toLocaleString()}` : '価格不明';
-
-        li.innerHTML = `
-          <div class="item-header">
-            <span class="rent">${rent}</span>
-            ${statusBadge}
-          </div>
-          <div class="title">${data.title}</div>
-          <div class="meta">
-            <span>📅 ${formatDate(data.scrapedAt)}</span>
-            <span>📍 ${data.layout || '-'}</span>
-          </div>
-        `;
-
-        // クリックで詳細を開く（IDを渡すように変更）
-        li.addEventListener('click', () => {
-          openDetail(docId, data);
-        });
-
-        listEl.appendChild(li);
-      });
-    }, (error) => {
-      console.error("データ取得エラー:", error);
-      listEl.innerHTML = '<div class="empty-state" style="color:red">読み込みエラー発生</div>';
-    });
-}
-
-// 3. 詳細画面の制御（生成ボタン vs コピーボタン）
-let currentDocId = null;
-
-function openDetail(docId, data) {
-  currentDocId = docId;
-  detailView.classList.add('open');
-
-  // 文章エリアの初期化
-  proposalTextEl.value = data.ai_proposal || "";
-
-  // ボタンの状態を切り替える
-  // まだAI生成していない(fetched)場合 -> 「✨ AI提案文を作成」ボタン
-  // すでに生成済み(ready)の場合 -> 「📋 文章をコピー」ボタン
-  // 生成中(analyzing)の場合 -> 無効化
-  
-  // イベントリスナーの重複登録を防ぐため、ボタンを再生成（クローン）
-  const newBtn = actionBtn.cloneNode(true);
-  actionBtn.parentNode.replaceChild(newBtn, actionBtn);
-  
-  const updateBtn = document.getElementById('action-btn'); // 新しいボタンを取得
-
-  if (!data.ai_proposal || data.status === 'fetched') {
-    // 【未生成モード】
-    updateBtn.innerHTML = '✨ AI提案文を作成する';
-    updateBtn.className = 'copy-btn';
-    updateBtn.style.background = '#4285f4'; // Google Blue
-    updateBtn.disabled = false;
-    
-    updateBtn.addEventListener('click', () => {
-      // AI生成をリクエスト
-      updateBtn.innerHTML = '🤖 作成中...';
-      updateBtn.disabled = true;
-      proposalTextEl.value = "AIが考え中です...\n（約10〜20秒お待ちください）";
-      
-      chrome.runtime.sendMessage({ 
-        action: "generate_proposal_manual", 
-        docId: currentDocId,
-        data: data 
       });
     });
+  });
 
-  } else if (data.status === 'analyzing') {
-    // 【生成中モード】
-    updateBtn.innerHTML = '🤖 AI思考中...';
-    updateBtn.style.background = '#ccc';
-    updateBtn.disabled = true;
-
-  } else {
-    // 【完了モード（コピー）】
-    updateBtn.innerHTML = '📋 文章をコピー';
-    updateBtn.className = 'copy-btn';
-    updateBtn.style.background = '#34a853'; // Green
-    updateBtn.disabled = false;
-
-    updateBtn.addEventListener('click', async () => {
-      await navigator.clipboard.writeText(proposalTextEl.value);
-      updateBtn.innerHTML = '✅ コピーしました！';
-      setTimeout(() => { updateBtn.innerHTML = '📋 文章をコピー'; }, 2000);
-    });
-  }
-}
-
-// 閉じるボタン
-closeBtn.addEventListener('click', () => {
-  detailView.classList.remove('open');
-});
-
-// 手動解析ボタン
-manualBtn.addEventListener('click', () => {
-  chrome.tabs.query({active: true, currentWindow: true}, (tabs) => {
-    if (tabs[0]) {
-      chrome.tabs.sendMessage(tabs[0].id, { action: "scrape_now" }, (response) => {
-        if (chrome.runtime.lastError) alert("ページをリロードしてください");
+  // キューのリセット（緊急停止）
+  ui.btnClear.addEventListener('click', () => {
+    if (confirm("巡回キューを全て削除し、パトロールを停止しますか？")) {
+      chrome.storage.local.set({ patrolQueue: [], isPatrolling: false }, () => {
+        // バックグラウンドにも停止信号を送る
+        chrome.runtime.sendMessage({ action: "stop_patrol" });
+        console.log("Queue cleared.");
+        updateUI();
       });
     }
   });
-});
 
-loadProperties();
+});

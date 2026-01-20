@@ -1,13 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "AI-Prophet (Dev)",
-  "version": "1.2",
-  "description": "不動産自動巡回エージェント - 自動巡回版",
+  "name": "AI-Prophet",
+  "version": "5.0",
+  "description": "Ultimate Real Estate Automation (Cost Saving Mode & Auto Patrol Beta)",
   "permissions": [
-    "activeTab",
-    "scripting",
+    "tabs",
     "storage",
-    "alarms" 
+    "alarms"
   ],
   "host_permissions": [
     "<all_urls>"
@@ -18,15 +17,17 @@
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["content.js"],
+      "run_at": "document_idle"
     }
   ],
   "action": {
-    "default_popup": "popup.html"
+    "default_popup": "popup.html",
+    "default_title": "AI-Prophet Control Panel"
   },
   "web_accessible_resources": [
     {
-      "resources": ["libs/*.js", "mock_site.html"],
+      "resources": ["libs/*.js"],
       "matches": ["<all_urls>"]
     }
   ]

@@ -3,214 +3,147 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI-Prophet</title>
+  <title>AI-Prophet コントローラー</title>
   <style>
     body {
-      width: 350px;
-      height: 500px;
-      margin: 0;
-      font-family: 'Helvetica Neue', Arial, sans-serif;
+      width: 320px;
+      font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
       background-color: #f8f9fa;
-      display: flex;
-      flex-direction: column;
+      color: #333;
+      margin: 0;
+      padding: 16px;
     }
 
-    header {
-      background-color: #fff;
-      padding: 15px;
-      border-bottom: 1px solid #ddd;
+    /* Header Section */
+    .header {
+      border-bottom: 2px solid #e9ecef;
+      padding-bottom: 12px;
+      margin-bottom: 16px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-      z-index: 10;
     }
-
-    h2 {
-      margin: 0;
+    .brand {
       font-size: 18px;
-      color: #333;
-    }
-
-    /* リストエリア */
-    #property-list {
-      flex: 1;
-      list-style: none;
-      padding: 0;
-      margin: 0;
-      overflow-y: auto;
-    }
-
-    .property-item {
-      background: #fff;
-      border-bottom: 1px solid #eee;
-      padding: 12px 15px;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    .property-item:hover {
-      background: #f1f3f4;
-    }
-
-    .item-header {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 4px;
-    }
-
-    .rent {
       font-weight: bold;
-      color: #e63946;
-      font-size: 16px;
+      color: #2c3e50;
     }
-
-    .title {
-      font-size: 14px;
-      color: #333;
-      margin-bottom: 4px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .meta {
-      font-size: 11px;
-      color: #666;
-      display: flex;
-      gap: 10px;
-    }
-
-    /* ステータスバッジ */
-    .status-badge {
+    .version {
       font-size: 10px;
+      background: #e9ecef;
       padding: 2px 6px;
       border-radius: 4px;
-      color: #fff;
-      background: #999;
+      color: #666;
     }
-    .status-analyzing { background: #fbbc04; color: #333; } /* 黄色 */
-    .status-ready { background: #34a853; } /* 緑 */
-    .status-error { background: #ea4335; } /* 赤 */
 
-    /* 空の状態 */
-    .empty-state {
-      padding: 20px;
-      text-align: center;
+    /* Status Cards */
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+      margin-bottom: 12px;
+    }
+    .card-label {
+      font-size: 11px;
       color: #888;
-      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
     }
-
-    /* 詳細ビュー（オーバーレイ） */
-    #detail-view {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
-      background: #fff;
-      transform: translateX(100%); /* 初期は画面外 */
-      transition: transform 0.3s ease;
+    .status-value {
+      font-size: 14px;
+      font-weight: 600;
       display: flex;
-      flex-direction: column;
-      z-index: 20;
-    }
-
-    #detail-view.open {
-      transform: translateX(0); /* スライドイン */
-    }
-
-    .detail-header {
-      padding: 15px;
-      background: #f8f9fa;
-      border-bottom: 1px solid #ddd;
-      font-weight: bold;
-      display: flex;
-      justify-content: space-between;
       align-items: center;
     }
+    
+    /* Dynamic Status Colors */
+    .status-idle { color: #6c757d; }
+    .status-active { color: #28a745; }
+    .status-warning { color: #ffc107; }
 
-    textarea {
-      flex: 1;
-      width: 100%;
-      padding: 15px;
-      border: none;
-      resize: none;
-      font-size: 14px;
-      line-height: 1.6;
-      box-sizing: border-box;
-      outline: none;
+    /* Indicator Dot */
+    .dot {
+      height: 8px;
+      width: 8px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 6px;
     }
+    .bg-green { background-color: #28a745; }
+    .bg-gray { background-color: #6c757d; }
+    .bg-blue { background-color: #007bff; }
 
-    .action-area {
-      padding: 15px;
-      border-top: 1px solid #ddd;
-      background: #fff;
-      display: flex;
-      gap: 10px;
+    /* Action Buttons */
+    .btn-group {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
     }
-
     button {
       border: none;
       padding: 10px;
-      border-radius: 4px;
-      cursor: pointer;
+      border-radius: 6px;
+      font-size: 12px;
       font-weight: bold;
-      font-size: 14px;
+      cursor: pointer;
       transition: opacity 0.2s;
     }
-    button:hover { opacity: 0.8; }
-    button:disabled { opacity: 0.5; cursor: wait; }
-
-    /* ボタンの種類 */
-    .copy-btn {
-      flex: 1;
-      background: #4285f4; /* 初期色 */
+    button:hover { opacity: 0.9; }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    
+    .btn-primary {
+      background-color: #007bff;
       color: white;
     }
-    .close-btn {
-      background: #f1f3f4;
-      color: #333;
-    }
-
-    /* フッターアクション */
-    footer {
-      padding: 10px;
-      background: #fff;
-      border-top: 1px solid #ddd;
-    }
-    .patrol-btn {
-      width: 100%;
-      background: #1a73e8;
+    .btn-danger {
+      background-color: #dc3545;
       color: white;
-      padding: 8px;
     }
 
+    /* Mode Badge */
+    .mode-badge {
+      display: inline-block;
+      font-size: 10px;
+      color: #004085;
+      background-color: #cce5ff;
+      padding: 2px 6px;
+      border-radius: 10px;
+      margin-top: 4px;
+    }
   </style>
 </head>
 <body>
 
-  <header>
-    <h2>AI-Prophet</h2>
-  </header>
+  <div class="header">
+    <div class="brand">AI-Prophet</div>
+    <div class="version">v5.0</div>
+  </div>
 
-  <ul id="property-list">
-    <div class="empty-state">読み込み中...</div>
-  </ul>
-
-  <footer>
-    <button id="manual-patrol-btn" class="patrol-btn">🔍 解析実行 (現在のタブ)</button>
-  </footer>
-
-  <div id="detail-view">
-    <div class="detail-header">
-      <span>AI提案文</span>
+  <div class="card">
+    <div class="card-label">システム状況</div>
+    <div class="status-value" id="status-text">
+      <span class="dot bg-gray" id="status-dot"></span>
+      初期化中...
     </div>
-    <textarea id="proposal-text" readonly></textarea>
-    <div class="action-area">
-      <button id="close-detail" class="close-btn">閉じる</button>
-      <button id="action-btn" class="copy-btn">読み込み中...</button>
+    <div class="mode-badge">⚡ コスト節約モード起動中</div>
+  </div>
+
+  <div class="card">
+    <div class="card-label">巡回待機キュー</div>
+    <div class="status-value">
+      <span id="queue-count">0</span>
+      <span style="font-size: 11px; font-weight: normal; color: #888; margin-left: 4px;">件 残り</span>
     </div>
+  </div>
+
+  <div class="btn-group">
+    <button id="btn-start" class="btn-primary">▶ 巡回開始</button>
+    <button id="btn-clear" class="btn-danger">⏹ 停止＆リセット</button>
   </div>
 
   <script src="popup.js"></script>
